@@ -95,49 +95,32 @@ four dimensions: age, gender, geography, and socioeconomic status.
 
 ## Project Structure
 
+```
 research-gap-finder/
-
-├── app.py                        # Streamlit application
-
-├── requirements.txt
-
+├── app.py                         # Streamlit application entry point
+├── requirements.txt               # Python dependencies
 ├── src/
-
 │   ├── retrieval/
-
-│   │   ├── pubmed.py             # PubMed API
-
-│   │   ├── semantic_scholar.py   # Semantic Scholar API
-
-│   │   ├── arxiv.py              # arXiv API
-
-│   │   ├── openalex.py           # OpenAlex API
-
+│   │   ├── pubmed.py              # PubMed API integration
+│   │   ├── semantic_scholar.py    # Semantic Scholar API integration
+│   │   ├── arxiv.py              # arXiv API integration
+│   │   ├── openalex.py           # OpenAlex API integration
 │   │   ├── cache.py              # Local result caching
-
 │   │   └── retriever.py          # Unified retrieval with field detection
-
 │   ├── processing/
-
 │   │   ├── embeddings.py         # Sentence Transformer embeddings
-
 │   │   ├── clustering.py         # DBSCAN clustering and keyword extraction
-
 │   │   └── contradiction.py      # Contradiction detection
-
 │   ├── analysis/
-
 │   │   ├── gap_detector.py       # Research gap identification
-
 │   │   └── demographics.py       # Demographic representation analysis
-
 │   ├── visualisation/
-
-│   │   └── citation_graph.py     # NetworkX and Plotly citation network
-
+│   │   └── citation_graph.py     # Citation network visualisation
 │   └── report/
-
 │       └── generator.py          # Structured report generation
+└── data/
+    └── cache/                     # Cached API results (local only)
+```
 
 
 ## Limitations
