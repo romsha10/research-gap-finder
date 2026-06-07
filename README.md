@@ -32,12 +32,15 @@ Plotly, NetworkX, Pandas
 ### 1. Clone the repository
 
 git clone https://github.com/YOUR_USERNAME/research-gap-finder.git
+
 cd research-gap-finder
 
 ### 2. Create virtual environment
 
 python -m venv venv
+
 venv\Scripts\activate        # Windows
+
 source venv/bin/activate     # Mac/Linux
 
 ### 3. Install dependencies
