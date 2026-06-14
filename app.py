@@ -48,23 +48,6 @@ st.markdown("""
         font-size: 0.92rem;
         color: #555;
     }
-    .metric-card {
-        background: #ffffff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .gap-high {
-        border-left: 4px solid #e74c3c;
-        padding-left: 0.8rem;
-        margin-bottom: 0.5rem;
-    }
-    .gap-medium {
-        border-left: 4px solid #f39c12;
-        padding-left: 0.8rem;
-        margin-bottom: 0.5rem;
-    }
     div[data-testid="stExpander"] {
         border: 1px solid #e0e0e0;
         border-radius: 6px;
@@ -88,8 +71,9 @@ with st.sidebar:
     st.markdown("""
 1. Enter your research topic in plain English
 2. Choose how many papers to retrieve per source
-3. Click **Run Analysis**
-4. Navigate the tabs to explore results
+3. Optionally enable full text retrieval
+4. Click **Run Analysis**
+5. Navigate the tabs to explore results
     """)
 
     st.markdown("---")
@@ -112,6 +96,27 @@ Estimated retrieval time at {max_per_source} papers per source:<br>
 """, unsafe_allow_html=True)
 
     st.markdown("---")
+
+    fetch_fulltext = st.toggle(
+        "Fetch full text where available",
+        value=False,
+        help=(
+            "Attempts to retrieve full paper text from PubMed Central, "
+            "arXiv, and Unpaywall open access PDFs. "
+            "Increases analysis time by 2-5 minutes but improves accuracy. "
+            "Falls back to abstract if full text is unavailable."
+        )
+    )
+
+    if fetch_fulltext:
+        st.markdown("""
+<div class="warning-box">
+Full text mode is enabled. Expect an additional 2-5 minutes.
+Approximately 40-60% of papers will have full text available.
+</div>
+""", unsafe_allow_html=True)
+
+    st.markdown("---")
     st.markdown("**Active Databases**")
     st.markdown("""
 | Database | Coverage |
@@ -126,20 +131,46 @@ Estimated retrieval time at {max_per_source} papers per source:<br>
     st.markdown("**Field Detection**")
     st.markdown("""
 The system automatically detects whether your topic is medical,
-computer science, physics, economics, or another field-and
+computer science, physics, economics, or another field and
 queries the most relevant databases accordingly.
     """)
 
     st.markdown("---")
+    st.markdown("**Cache Management**")
+
+    try:
+        from src.retrieval.cache import list_cached_queries, clear_cache
+        cached_queries = list_cached_queries()
+        if cached_queries:
+            st.caption(f"{len(cached_queries)} topic(s) cached locally")
+            for cq in cached_queries[:3]:
+                st.caption(
+                    f"- {cq['query'][:35]} "
+                    f"({cq['papers']} papers, {cq['age_days']}d ago)"
+                )
+            if st.button("Clear Cache", key="clear_cache_btn"):
+                deleted = clear_cache()
+                st.success(f"Cleared {deleted} cached result(s)")
+        else:
+            st.caption("No cached results yet")
+            st.caption("Results are cached for 7 days after first search")
+    except Exception:
+        st.caption("Cache unavailable")
+
+    st.markdown("---")
     st.caption(
-        "Built with Streamlit, Sentence Transformers, FAISS, Plotly, NetworkX")
+        "Built with Streamlit, Sentence Transformers, "
+        "Scikit-learn, Plotly, NetworkX"
+    )
 
 
 # ── Main Header ───────────────────────────────────────────────────────────────
-st.markdown('<div class="main-title">Research Gap Finder</div>',
-            unsafe_allow_html=True)
 st.markdown(
-    '<div class="subtitle">Automated literature analysis-retrieve papers, '
+    '<div class="main-title">Research Gap Finder</div>',
+    unsafe_allow_html=True
+)
+st.markdown(
+    '<div class="subtitle">Automated literature analysis — retrieve papers, '
     'map the knowledge landscape, and identify what has not been studied yet.</div>',
     unsafe_allow_html=True
 )
@@ -156,8 +187,9 @@ with st.expander("What does this tool do and how does it work?", expanded=False)
 Most researchers spend weeks reading through hundreds of papers just to figure
 out what has not been studied yet. This tool automates that process.
 
-You enter any research topic. The system retrieves papers from academic databases,
-analyses them using AI, and produces a structured report identifying:
+You enter any research topic. The system retrieves papers from academic
+databases, analyses them using NLP, and produces a structured report
+identifying:
 
 - Which subtopics are well-studied
 - Which subtopics have almost no papers (research gaps)
@@ -167,40 +199,45 @@ analyses them using AI, and produces a structured report identifying:
         """)
     with col2:
         st.markdown("""
-**How it works-step by step**
+**How it works — step by step**
 
-1. **Retrieval**-Papers are fetched from PubMed, OpenAlex, Semantic Scholar,
-   and arXiv using their free APIs
+1. **Retrieval** — Papers are fetched from PubMed, OpenAlex, Semantic
+   Scholar, and arXiv using their free APIs
 
-2. **Embeddings**-Each paper's title and abstract is converted into a
-   384-dimensional vector using a Sentence Transformer model. Papers about
-   similar topics get similar vectors.
+2. **Full text** — Where available, full paper text is retrieved from
+   PubMed Central, arXiv PDFs, and Unpaywall open access links
 
-3. **Clustering**-Papers are grouped into subtopic clusters automatically.
-   You do not tell the system how many clusters to make-it figures that out.
+3. **Embeddings** — Each paper is converted into a 384-dimensional vector
+   using a Sentence Transformer model. Papers about similar topics get
+   similar vectors.
 
-4. **Gap detection**-Clusters with very few papers, or clusters that are
-   adjacent to well-studied areas but themselves thin, are flagged as gaps.
+4. **Clustering** — Papers are grouped into subtopic clusters automatically.
+   The system determines the number of clusters without being told.
 
-5. **Contradiction detection**-Pairs of papers on the same topic but with
-   opposing conclusions are identified using sentiment analysis.
+5. **Gap detection** — Clusters with very few papers, or clusters adjacent
+   to well-studied areas but themselves thin, are flagged as gaps.
 
-6. **Report**-All findings are compiled into a structured plain-English report
-   you can download.
+6. **Contradiction detection** — Pairs of papers on the same topic but with
+   opposing conclusions are identified.
+
+7. **Report** — All findings are compiled into a structured plain-English
+   report you can download.
         """)
 
 st.markdown("---")
 
 # ── Input Section ─────────────────────────────────────────────────────────────
-st.markdown('<div class="section-header">Enter Your Research Topic</div>',
-            unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-header">Enter Your Research Topic</div>',
+    unsafe_allow_html=True
+)
 
 st.markdown("""
 <div class="info-box">
 <b>Tips for a good query:</b> Be specific but not too narrow.
 "Depression treatment in adolescents" works better than "depression" (too broad)
 or "CBT outcomes in 14-year-old females in Scotland" (too narrow).
-The system works for any academic field-medicine, computer science,
+The system works for any academic field — medicine, computer science,
 economics, physics, social science, law, and more.
 </div>
 """, unsafe_allow_html=True)
@@ -209,18 +246,26 @@ col_input, col_button = st.columns([4, 1])
 with col_input:
     topic = st.text_input(
         "Research topic",
-        placeholder="e.g.  depression treatment in adolescents  |  transformer models for code generation  |  renewable energy storage",
+        placeholder=(
+            "e.g.  depression treatment in adolescents  |  "
+            "transformer models for code generation  |  "
+            "renewable energy storage"
+        ),
         label_visibility="collapsed"
     )
 with col_button:
-    run_button = st.button("Run Analysis", type="primary",
-                           use_container_width=True)
+    run_button = st.button(
+        "Run Analysis",
+        type="primary",
+        use_container_width=True
+    )
 
 st.markdown("""
 <div class="warning-box">
-<b>Note on wait time:</b> The first run takes 3–8 minutes depending on settings.
-Most of this time is spent waiting for the academic databases to respond-
-not computation. Do not close the browser tab while it runs.
+<b>Note on wait time:</b> The first run takes 3-8 minutes depending on
+settings. Most of this time is spent waiting for academic databases to
+respond. Do not close the browser tab while it runs. Subsequent searches
+on the same topic load from cache in under 15 seconds.
 </div>
 """, unsafe_allow_html=True)
 
@@ -239,28 +284,51 @@ if run_button and topic.strip():
         from dotenv import load_dotenv
         from src.retrieval.retriever import retrieve_all_papers
         from src.processing.embeddings import generate_embeddings
-        from src.processing.clustering import cluster_papers, describe_clusters, get_cluster_keywords
-        from src.analysis.gap_detector import detect_research_gaps, format_gaps_as_text
+        from src.processing.clustering import (
+            cluster_papers, describe_clusters, get_cluster_keywords
+        )
+        from src.analysis.gap_detector import (
+            detect_research_gaps, format_gaps_as_text
+        )
         from src.processing.contradiction import detect_contradictions
-        from src.analysis.demographics import analyse_demographics, identify_demographic_gaps, format_demographic_report
+        from src.analysis.demographics import (
+            analyse_demographics,
+            identify_demographic_gaps,
+            format_demographic_report
+        )
         from src.report.generator import generate_report
-        from src.visualisation.citation_graph import build_similarity_network, compute_layout, render_citation_network, get_network_stats
+        from src.visualisation.citation_graph import (
+            build_similarity_network,
+            compute_layout,
+            render_citation_network,
+            get_network_stats
+        )
         load_dotenv()
 
     st.markdown("---")
-    st.markdown('<div class="section-header">Analysis Progress</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-header">Analysis Progress</div>',
+        unsafe_allow_html=True
+    )
 
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     def update_progress(step, total, message):
         progress_bar.progress(step / total)
-        status_text.markdown(f"**Step {step} of {total}**-{message}")
+        status_text.markdown(f"**Step {step} of {total}** — {message}")
 
     try:
-        update_progress(1, 7, "Retrieving papers from academic databases...")
-        df = retrieve_all_papers(topic, max_per_source=max_per_source)
+        update_progress(1, 7,
+                        "Retrieving papers" +
+                        (" and full texts" if fetch_fulltext else "") +
+                        " from academic databases..."
+                        )
+        df = retrieve_all_papers(
+            topic,
+            max_per_source=max_per_source,
+            fetch_fulltext=fetch_fulltext
+        )
 
         if df.empty or len(df) < 3:
             st.error(
@@ -269,8 +337,9 @@ if run_button and topic.strip():
             )
             st.stop()
 
-        update_progress(
-            2, 7, f"Generating semantic embeddings for {len(df)} papers...")
+        update_progress(2, 7,
+                        f"Generating semantic embeddings for {len(df)} papers..."
+                        )
         df, embeddings = generate_embeddings(df)
 
         update_progress(3, 7, "Clustering papers into subtopic groups...")
@@ -284,7 +353,8 @@ if run_button and topic.strip():
 
         update_progress(5, 7, "Detecting contradictions between papers...")
         contradictions = detect_contradictions(
-            df, embeddings, similarity_threshold=0.55)
+            df, embeddings, similarity_threshold=0.55
+        )
 
         update_progress(6, 7, "Analysing demographic representation...")
         demo_results = analyse_demographics(df)
@@ -299,7 +369,6 @@ if run_button and topic.strip():
         progress_bar.progress(1.0)
         status_text.markdown("**Analysis complete.**")
 
-        # Pre-build network
         G = build_similarity_network(df, embeddings, similarity_threshold=0.50)
         pos = compute_layout(G)
         fig_network = render_citation_network(G, pos, df, keywords)
@@ -308,17 +377,24 @@ if run_button and topic.strip():
     except Exception as e:
         st.error(f"An error occurred during analysis: {str(e)}")
         st.caption(
-            "If this persists, try a different topic or reduce papers per source.")
+            "If this persists, try a different topic or "
+            "reduce papers per source."
+        )
         st.stop()
 
     # ── Summary Metrics ───────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-header">Summary of Results</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-header">Summary of Results</div>',
+        unsafe_allow_html=True
+    )
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Papers Retrieved", len(df))
-    m2.metric("Subtopic Clusters", len(summary[summary["cluster_id"] != -1]))
+    m2.metric(
+        "Subtopic Clusters",
+        len(summary[summary["cluster_id"] != -1])
+    )
     m3.metric("Research Gaps", len(gaps))
     m4.metric("Contradictions", len(contradictions))
     m5.metric("Demographic Gaps", len(demo_gaps))
@@ -326,6 +402,13 @@ if run_button and topic.strip():
     sources = df["source"].value_counts().to_dict()
     source_str = "  |  ".join(f"{k}: {v}" for k, v in sources.items())
     st.caption(f"Sources: {source_str}")
+
+    if fetch_fulltext and "fulltext_available" in df.columns:
+        ft_count = int(df["fulltext_available"].sum())
+        st.caption(
+            f"Full text retrieved for {ft_count} of {len(df)} papers "
+            f"({round(ft_count / len(df) * 100)}%)"
+        )
 
     st.markdown("---")
 
@@ -343,15 +426,17 @@ if run_button and topic.strip():
     # ── TAB 1: Knowledge Landscape ────────────────────────────────────────────
     with tab1:
         st.markdown(
-            '<div class="section-header">Knowledge Landscape</div>', unsafe_allow_html=True)
-
+            '<div class="section-header">Knowledge Landscape</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
-<b>What you are looking at:</b> The chart below shows how papers on your topic
-are distributed across distinct subtopics. Each bar is a cluster of papers that
-discuss a similar angle of the topic. A tall bar means that subtopic is
-well-studied. A very short bar means very few researchers have worked on that angle.
-Green = well-studied (dense). Yellow = moderate coverage. Red = underexplored (sparse).
+<b>What you are looking at:</b> The chart below shows how papers on your
+topic are distributed across distinct subtopics. Each bar is a cluster of
+papers discussing a similar angle. A tall bar means that subtopic is
+well-studied. A very short bar means very few researchers have worked on
+that angle. Green = well-studied. Yellow = moderate coverage.
+Red = underexplored.
 </div>
 """, unsafe_allow_html=True)
 
@@ -376,7 +461,7 @@ Green = well-studied (dense). Yellow = moderate coverage. Red = underexplored (s
                 "label": "Subtopic Cluster",
                 "density": "Coverage Level"
             },
-            title=f"Distribution of Research Effort-{topic.title()}"
+            title=f"Distribution of Research Effort — {topic.title()}"
         )
         fig.update_layout(
             height=420,
@@ -389,11 +474,13 @@ Green = well-studied (dense). Yellow = moderate coverage. Red = underexplored (s
 
         st.markdown("**Cluster Details**")
         st.markdown(
-            "Each cluster below represents a group of papers on a similar subtopic. "
-            "The keywords are extracted automatically from the paper abstracts."
+            "Each cluster below represents a group of papers on a similar "
+            "subtopic. Keywords are extracted automatically from paper abstracts."
         )
 
-        for _, row in summary.sort_values("paper_count", ascending=False).iterrows():
+        for _, row in summary.sort_values(
+            "paper_count", ascending=False
+        ).iterrows():
             if row["cluster_id"] == -1:
                 continue
             cid = row["cluster_id"]
@@ -411,11 +498,11 @@ Green = well-studied (dense). Yellow = moderate coverage. Red = underexplored (s
             }.get(row["density"], "Unknown")
 
             with st.expander(
-                f"{row['label']}-{row['paper_count']} papers-{coverage}"
+                f"{row['label']} — {row['paper_count']} papers — {coverage}"
             ):
-                st.markdown(f"**Automatic keywords:** {kws}")
+                st.markdown(f"**Keywords:** {kws}")
                 st.markdown(f"**Year range:** {year_str}")
-                st.markdown(f"**Coverage assessment:** {coverage}")
+                st.markdown(f"**Coverage:** {coverage}")
                 if row.get("sample_titles"):
                     st.markdown("**Sample papers in this cluster:**")
                     for t in row["sample_titles"][:3]:
@@ -423,23 +510,25 @@ Green = well-studied (dense). Yellow = moderate coverage. Red = underexplored (s
 
     # ── TAB 2: Research Gaps ──────────────────────────────────────────────────
     with tab2:
-        st.markdown('<div class="section-header">Research Gaps</div>',
-                    unsafe_allow_html=True)
-
+        st.markdown(
+            '<div class="section-header">Research Gaps</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
-<b>What is a research gap?</b> A research gap is an angle of a topic that has
-not been studied, or has been studied very little. This tool identifies three types:
+<b>What is a research gap?</b> A research gap is an angle of a topic that
+has not been studied, or has been studied very little. Three types are detected:
 <ul>
-<li><b>Underexplored Subtopic</b>-a cluster exists but has only 1-2 papers.
+<li><b>Underexplored Subtopic</b> — a cluster exists but has only 1-2 papers.
 The topic exists in the literature but almost nobody has worked on it.</li>
-<li><b>Adjacent Gap</b>-a thin cluster sits right next to a well-studied cluster.
-Researchers are publishing nearby but have not crossed into this angle.</li>
-<li><b>Temporal Gap</b>-a subtopic had papers years ago but nothing recent.
-Modern methods have not been applied to it.</li>
+<li><b>Adjacent Gap</b> — a thin cluster sits right next to a well-studied
+cluster. Researchers are publishing nearby but have not crossed into this
+angle. Especially valuable because existing methodology can be reused.</li>
+<li><b>Temporal Gap</b> — a subtopic had papers years ago but nothing recent.
+Modern methods have not been applied to it. Lower risk to pursue because
+prior work exists as a foundation.</li>
 </ul>
-Each gap below includes what it means in plain English and a concrete
-recommendation for what a researcher could do to address it.
+Each gap includes what it means in plain English and a concrete recommendation.
 </div>
 """, unsafe_allow_html=True)
 
@@ -461,9 +550,8 @@ recommendation for what a researcher could do to address it.
             st.markdown("---")
             st.markdown(
                 "Gaps are ordered from highest to lowest priority. "
-                "High priority means the signal is strong and the gap is "
-                "well-defined. Each gap shows what it means and what you "
-                "can do about it."
+                "Each gap shows what was found, what it means, "
+                "and what you can do about it."
             )
 
             for i, gap in enumerate(gaps, 1):
@@ -480,29 +568,30 @@ recommendation for what a researcher could do to address it.
                     st.write(gap["description"])
 
                     st.markdown("---")
-
                     col1, col2 = st.columns(2)
 
                     with col1:
                         st.markdown("**What this means for researchers:**")
-                        st.info(gap.get("what_it_means",
-                                "See description above."))
+                        st.info(
+                            gap.get("what_it_means", "See description above.")
+                        )
 
                     with col2:
                         st.markdown("**Recommended research action:**")
                         st.success(
-                            gap.get("what_to_do", "See description above."))
+                            gap.get("what_to_do", "See description above.")
+                        )
 
-                    if gap.get("keywords") and gap["keywords"] != ["single paper cluster"]:
+                    if gap.get("keywords") and \
+                            gap["keywords"] != ["single paper cluster"]:
                         st.markdown(
-                            f"**Keywords identifying this gap:** "
+                            f"**Keywords:** "
                             f"{', '.join(gap['keywords'][:5])}"
                         )
 
                     if gap.get("sample_titles"):
                         st.markdown(
-                            "**Existing papers in this cluster** "
-                            "(what little exists on this angle):"
+                            "**Existing papers in this cluster:**"
                         )
                         for t in gap["sample_titles"][:3]:
                             st.markdown(f"- {t}")
@@ -510,21 +599,20 @@ recommendation for what a researcher could do to address it.
                     if gap["gap_type"] == "Adjacent Gap":
                         st.markdown(
                             f"**Why this is especially valuable:** "
-                            f"The similarity score of "
-                            f"{gap.get('similarity_to_dense', 'N/A')} means "
-                            f"this gap is very close to an active research area. "
-                            f"You can directly borrow methods from that neighbouring "
-                            f"cluster."
+                            f"Similarity score of "
+                            f"{gap.get('similarity_to_dense', 'N/A')} "
+                            f"means this gap is very close to an active "
+                            f"research area. You can directly borrow "
+                            f"methods from that neighbouring cluster."
                         )
-
                     elif gap["gap_type"] == "Temporal Gap":
                         st.markdown(
                             f"**Why this is especially valuable:** "
                             f"The last paper on this subtopic was from "
-                            f"{gap.get('last_paper_year', 'unknown')}-"
+                            f"{gap.get('last_paper_year', 'unknown')} — "
                             f"{gap.get('years_since', '?')} years ago. "
-                            f"Replication studies with modern methods are among "
-                            f"the most reliably publishable types of research."
+                            f"Replication studies with modern methods are "
+                            f"among the most reliably publishable research."
                         )
 
             st.markdown("---")
@@ -540,21 +628,20 @@ recommendation for what a researcher could do to address it.
     # ── TAB 3: Contradictions ─────────────────────────────────────────────────
     with tab3:
         st.markdown(
-            '<div class="section-header">Contradictions in the Literature</div>', unsafe_allow_html=True)
-
+            '<div class="section-header">Contradictions in the Literature</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
-<b>What is a contradiction?</b> Two papers are flagged as contradictory when they
-address the same research question (measured by how similar their abstracts are
-semantically) but reach opposing conclusions-one reports a positive or
-significant finding, the other reports a null or negative finding.
-These are not necessarily errors. They may reflect differences in methodology,
-population, or context. They represent unresolved debates where more research
-is needed.
+<b>What is a contradiction?</b> Two papers are flagged as contradictory
+when they address the same research question (measured by semantic
+similarity of abstracts) but reach opposing conclusions — one reports
+a positive or significant finding, the other reports a null or negative
+finding. These represent unresolved debates where more research is needed.
 <br><br>
-<b>Strength levels:</b> Strong = high semantic similarity + clear sentiment
-opposition. Moderate = one or both signals is partial. Weak = flagged but
-requires manual review to confirm.
+<b>Strength levels:</b> Strong = high semantic similarity and clear
+sentiment opposition. Moderate = one or both signals is partial.
+Weak = flagged but requires manual review to confirm.
 </div>
 """, unsafe_allow_html=True)
 
@@ -570,11 +657,17 @@ requires manual review to confirm.
             )
 
             strong = [
-                c for c in contradictions if c["contradiction_strength"] == "Strong"]
+                c for c in contradictions
+                if c["contradiction_strength"] == "Strong"
+            ]
             moderate = [
-                c for c in contradictions if c["contradiction_strength"] == "Moderate"]
+                c for c in contradictions
+                if c["contradiction_strength"] == "Moderate"
+            ]
             weak = [
-                c for c in contradictions if c["contradiction_strength"] == "Weak"]
+                c for c in contradictions
+                if c["contradiction_strength"] == "Weak"
+            ]
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Strong Contradictions", len(strong))
@@ -582,10 +675,6 @@ requires manual review to confirm.
             c3.metric("Weak / Possible", len(weak))
 
             st.markdown("---")
-            st.markdown(
-                "The contradictions below are ordered from strongest to weakest signal. "
-                "Click any row to see both papers."
-            )
 
             for i, c in enumerate(contradictions[:10], 1):
                 with st.expander(
@@ -602,45 +691,52 @@ requires manual review to confirm.
                         st.markdown(f"Year: {c['paper_a_year']}")
                         st.markdown(f"Source: {c['paper_a_source']}")
                         st.markdown(
-                            f"Conclusion signal: **{c['sentiment_a']}**")
+                            f"Conclusion signal: **{c['sentiment_a']}**"
+                        )
                         st.markdown(f"Title: {c['paper_a_title']}")
                         if c.get("paper_a_url"):
-                            st.markdown(f"[View paper]({c['paper_a_url']})")
+                            st.markdown(
+                                f"[View paper]({c['paper_a_url']})"
+                            )
                     with col2:
                         st.markdown("**Paper B**")
                         st.markdown(f"Year: {c['paper_b_year']}")
                         st.markdown(f"Source: {c['paper_b_source']}")
                         st.markdown(
-                            f"Conclusion signal: **{c['sentiment_b']}**")
+                            f"Conclusion signal: **{c['sentiment_b']}**"
+                        )
                         st.markdown(f"Title: {c['paper_b_title']}")
                         if c.get("paper_b_url"):
-                            st.markdown(f"[View paper]({c['paper_b_url']})")
+                            st.markdown(
+                                f"[View paper]({c['paper_b_url']})"
+                            )
                     st.caption(
-                        f"Sentiment divergence score: {c['sentiment_divergence']} "
-                        f"(higher = more opposing conclusions)"
+                        f"Sentiment divergence: {c['sentiment_divergence']} "
+                        f"| Sources: {c['paper_a_source']} "
+                        f"vs {c['paper_b_source']}"
                     )
 
     # ── TAB 4: Demographics ───────────────────────────────────────────────────
     with tab4:
         st.markdown(
-            '<div class="section-header">Demographic Representation Analysis</div>', unsafe_allow_html=True)
-
+            '<div class="section-header">Demographic Representation Analysis</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
 <b>What this analyses:</b> Research is not equally distributed across all
-populations. Some groups-by geography, age, gender, or socioeconomic status-
-are systematically underrepresented in the academic literature. This section
-scans all retrieved abstracts for mentions of specific population groups and
-flags where the literature has blind spots.
+populations. Some groups — by geography, age, gender, or socioeconomic
+status — are systematically underrepresented in the academic literature.
+This section scans all retrieved abstracts for mentions of specific
+population groups and flags where the literature has blind spots.
 <br><br>
-A "Critical" gap means zero papers in the retrieved set mention that population.
-A "High" gap means fewer than 5% of papers address that group.
+A Critical gap means zero papers mention that population.
+A High gap means fewer than 5% of papers address that group.
 </div>
 """, unsafe_allow_html=True)
 
         geo_data = demo_results.get("geography", {})
         age_data = demo_results.get("age", {})
-        gender_data = demo_results.get("gender", {})
 
         col1, col2 = st.columns(2)
 
@@ -660,7 +756,9 @@ A "High" gap means fewer than 5% of papers address that group.
                     y="Percentage of Total",
                     title="Geographic Representation of Studies (%)",
                     color="Percentage of Total",
-                    color_continuous_scale=["#e74c3c", "#f39c12", "#2ecc71"],
+                    color_continuous_scale=[
+                        "#e74c3c", "#f39c12", "#2ecc71"
+                    ],
                     labels={"Percentage of Total": "% of papers"}
                 )
                 fig_geo.update_layout(
@@ -682,7 +780,7 @@ A "High" gap means fewer than 5% of papers address that group.
                         age_df,
                         names="Age Group",
                         values="Papers",
-                        title="Age Group Representation in Retrieved Papers",
+                        title="Age Group Representation",
                         color_discrete_sequence=px.colors.qualitative.Set2
                     )
                     fig_age.update_layout(height=380)
@@ -711,36 +809,33 @@ A "High" gap means fewer than 5% of papers address that group.
                     )
                 st.markdown("")
 
-        with st.expander("View full demographic report text"):
+        with st.expander("View full demographic report"):
             st.text(demo_report)
 
     # ── TAB 5: Citation Network ───────────────────────────────────────────────
     with tab5:
         st.markdown(
-            '<div class="section-header">Semantic Citation Network</div>', unsafe_allow_html=True)
-
+            '<div class="section-header">Semantic Citation Network</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
-<b>What you are looking at:</b> Each circle (node) in this graph is a paper.
-Two papers are connected by a line if their abstracts are semantically similar
-— meaning they are likely addressing the same or adjacent research questions.
+<b>What you are looking at:</b> Each circle is a paper. Two papers are
+connected by a line if their abstracts are semantically similar — meaning
+they likely address the same or adjacent research questions.
 <br><br>
-<b>Node size</b> reflects how many connections a paper has. Larger nodes are
-central to the literature-they connect to many other papers and represent
-the core of the field. Smaller, isolated nodes represent papers on underexplored
-angles with few connections to the rest of the literature.
+<b>Node size</b> reflects how many connections a paper has. Larger nodes
+are central to the literature and represent the core of the field.
+Smaller isolated nodes represent papers on underexplored angles.
 <br><br>
 <b>Colour</b> represents which subtopic cluster each paper belongs to.
-Papers of the same colour discuss similar angles of the topic.
-<br><br>
-Use the slider below to adjust how strict the similarity threshold is.
-A lower threshold shows more connections; a higher threshold shows only
-the strongest relationships.
+Use the slider to adjust how strict the similarity threshold is.
 </div>
 """, unsafe_allow_html=True)
 
         threshold = st.slider(
-            "Similarity threshold-lower shows more connections, higher shows only the strongest",
+            "Similarity threshold — lower shows more connections, "
+            "higher shows only the strongest",
             min_value=0.3,
             max_value=0.9,
             value=0.5,
@@ -760,25 +855,26 @@ the strongest relationships.
         if network_stats:
             st.markdown("**Network Statistics**")
             n1, n2, n3, n4 = st.columns(4)
-            n1.metric("Total Papers (Nodes)", network_stats["total_nodes"])
-            n2.metric("Connections (Edges)", network_stats["total_edges"])
-            n3.metric("Average Connections per Paper",
-                      network_stats["avg_connections"])
+            n1.metric("Total Papers", network_stats["total_nodes"])
+            n2.metric("Connections", network_stats["total_edges"])
+            n3.metric(
+                "Avg Connections per Paper",
+                network_stats["avg_connections"]
+            )
             n4.metric("Isolated Papers", network_stats["isolated_papers"])
 
             if network_stats["isolated_papers"] > 0:
                 st.markdown("""
 <div class="warning-box">
-<b>Isolated papers detected:</b> Papers with no connections to others are on
-angles of the topic that no other retrieved paper addresses. These are strong
-candidates for research gap investigation.
+<b>Isolated papers detected:</b> Papers with no connections to others are
+on angles of the topic that no other retrieved paper addresses. These are
+strong candidates for research gap investigation.
 </div>
 """, unsafe_allow_html=True)
 
             if network_stats.get("top_connected"):
                 st.markdown(
-                    "**Most connected papers**-these are the central works "
-                    "in the retrieved literature:"
+                    "**Most connected papers — core of the field:**"
                 )
                 for node_id, degree in network_stats["top_connected"]:
                     title = G.nodes[node_id]["title"]
@@ -787,15 +883,16 @@ candidates for research gap investigation.
     # ── TAB 6: Full Report ────────────────────────────────────────────────────
     with tab6:
         st.markdown(
-            '<div class="section-header">Full Research Gap Report</div>', unsafe_allow_html=True)
-
+            '<div class="section-header">Full Research Gap Report</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
-This report synthesises all analysis outputs-gaps, contradictions, demographic
-representation, and cluster landscape-into a single structured document.
-It is written in plain academic English and is suitable for including in a
-dissertation, grant application, or systematic review as a starting point.
-Download it using the button below.
+This report synthesises all analysis outputs — gaps, contradictions,
+demographic representation, and cluster landscape — into a single
+structured document written in plain academic English. It is suitable
+for including in a dissertation, grant application, or systematic review
+as a starting point. Download it using the button below.
 </div>
 """, unsafe_allow_html=True)
 
@@ -811,7 +908,10 @@ Download it using the button below.
         st.download_button(
             "Download Full Report (.txt)",
             ai_report,
-            file_name=f"research_gap_report_{topic[:40].replace(' ', '_')}.txt",
+            file_name=(
+                f"research_gap_report_"
+                f"{topic[:40].replace(' ', '_')}.txt"
+            ),
             mime="text/plain",
             use_container_width=True
         )
@@ -819,14 +919,15 @@ Download it using the button below.
     # ── TAB 7: All Papers ─────────────────────────────────────────────────────
     with tab7:
         st.markdown(
-            '<div class="section-header">All Retrieved Papers</div>', unsafe_allow_html=True)
-
+            '<div class="section-header">All Retrieved Papers</div>',
+            unsafe_allow_html=True
+        )
         st.markdown("""
 <div class="info-box">
-All papers retrieved from academic databases for your query are listed below.
-Use the source filter to view papers from specific databases. The Cluster column
-shows which subtopic group each paper was assigned to. You can download the full
-dataset as a CSV file.
+All papers retrieved from academic databases for your query are listed
+below. Use the source filter to view papers from specific databases.
+The Cluster column shows which subtopic group each paper was assigned to.
+Download the full dataset as a CSV file.
 </div>
 """, unsafe_allow_html=True)
 
@@ -838,8 +939,28 @@ dataset as a CSV file.
 
         filtered_df = df[df["source"].isin(source_filter)].copy()
 
+        if "fulltext_available" in filtered_df.columns:
+            ft_count = int(filtered_df["fulltext_available"].sum())
+            total_count = len(filtered_df)
+            st.markdown(
+                f"Full text retrieved for **{ft_count} of {total_count}** "
+                f"papers ({round(ft_count / total_count * 100) if total_count > 0 else 0}%). "
+                f"Remaining papers use abstract only."
+            )
+            if ft_count > 0:
+                source_breakdown = filtered_df[
+                    filtered_df["fulltext_available"] == True
+                ]["fulltext_source"].value_counts().to_dict()
+                breakdown_str = "  |  ".join(
+                    f"{k}: {v}" for k, v in source_breakdown.items()
+                )
+                st.caption(f"Full text sources: {breakdown_str}")
+
         display_cols = [
-            c for c in ["title", "year", "source", "cluster", "url"]
+            c for c in [
+                "title", "year", "source", "cluster",
+                "fulltext_available", "url"
+            ]
             if c in filtered_df.columns
         ]
         display_df = filtered_df[display_cols].copy()

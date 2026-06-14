@@ -6,16 +6,23 @@ from src.retrieval.cache import load_from_cache, save_to_cache
 import pandas as pd
 
 MEDICAL_FIELDS = {"medicine", "psychology", "biology", "chemistry"}
-CS_FIELDS = {"computer science", "machine learning",
-             "artificial intelligence", "engineering"}
+CS_FIELDS = {
+    "computer science", "machine learning",
+    "artificial intelligence", "engineering"
+}
 
 
-def retrieve_all_papers(query: str, max_per_source: int = 50) -> pd.DataFrame:
+def retrieve_all_papers(
+    query: str,
+    max_per_source: int = 50,
+    fetch_fulltext: bool = False
+) -> pd.DataFrame:
 
     print(f"\nStarting retrieval for: '{query}'")
 
     # Check cache first
-    cached = load_from_cache(query, max_per_source)
+    cache_key = f"{query}_{max_per_source}_{'ft' if fetch_fulltext else 'abs'}"
+    cached = load_from_cache(cache_key, max_per_source)
     if cached is not None:
         df = pd.DataFrame(cached)
         print(f"Served from cache: {len(df)} papers")
@@ -50,6 +57,7 @@ def retrieve_all_papers(query: str, max_per_source: int = 50) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = pd.DataFrame(all_papers)
+
     df["title_normalised"] = (
         df["title"]
         .str.lower()
@@ -61,8 +69,17 @@ def retrieve_all_papers(query: str, max_per_source: int = 50) -> pd.DataFrame:
     df = df.reset_index(drop=True)
 
     print(f"After deduplication: {len(df)} papers")
+    print(f"Sources: {df['source'].value_counts().to_dict()}")
 
-    # Save to cache for next time
-    save_to_cache(query, max_per_source, df.to_dict(orient="records"))
+    # Full text enrichment — optional, takes extra time
+    if fetch_fulltext:
+        from src.retrieval.fulltext import enrich_with_fulltext
+        print("\nFetching full text where available...")
+        papers_list = df.to_dict(orient="records")
+        enriched = enrich_with_fulltext(papers_list)
+        df = pd.DataFrame(enriched)
+
+    # Save to cache
+    save_to_cache(cache_key, max_per_source, df.to_dict(orient="records"))
 
     return df

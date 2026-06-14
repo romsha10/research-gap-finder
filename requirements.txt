@@ -16,4 +16,5 @@ numpy==1.26.4
 scikit-learn==1.5.0
 arxiv==2.1.0
 biopython==1.83
-anthropic==0.34.0
+pdfplumber==0.11.0
+pymupdf==1.24.5

@@ -25,30 +25,37 @@ def get_model() -> SentenceTransformer:
 
 def generate_embeddings(df: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
     """
-    Converts each paper's title and abstract into a 384-dimensional vector.
-
-    Why title + abstract together:
-    The title tells us the topic. The abstract tells us the method, findings,
-    and population. Combining them gives the model more signal than either alone.
-
-    Why normalise embeddings:
-    Normalising to unit length means cosine similarity between two vectors
-    equals their dot product-which is faster to compute and easier to
-    interpret (1.0 = identical meaning, 0.0 = completely unrelated).
-
-    Returns:
-        df        -original DataFrame with added text_for_embedding column
-        embeddings-numpy array of shape (n_papers, 384)
+    Generates embeddings using full text where available, abstract otherwise.
     """
     model = get_model()
-
     df = df.copy()
-    df["text_for_embedding"] = (
-        df["title"].fillna("") + ". " + df["abstract"].fillna("")
-    )
+
+    def get_text_for_embedding(row):
+        # Use full text if available — gives much richer semantic signal
+        if row.get("fulltext_available") and row.get("full_text"):
+            # Use title + first 2000 chars of full text
+            # First 2000 chars covers abstract + intro which is most useful
+            return (
+                str(row.get("title", "")) + ". " +
+                str(row["full_text"])[:2000]
+            )
+        # Fall back to title + abstract
+        return (
+            str(row.get("title", "")) + ". " +
+            str(row.get("abstract", ""))
+        )
+
+    df["text_for_embedding"] = df.apply(get_text_for_embedding, axis=1)
 
     texts = df["text_for_embedding"].tolist()
+    fulltext_count = df.get("fulltext_available",
+                            pd.Series([False]*len(df))).sum()
+
     print(f"Generating embeddings for {len(texts)} papers...")
+    print(
+        f"Using full text for {fulltext_count} papers, "
+        f"abstracts for {len(texts) - fulltext_count} papers"
+    )
 
     embeddings = model.encode(
         texts,
