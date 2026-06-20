@@ -15,13 +15,18 @@ CS_FIELDS = {
 def retrieve_all_papers(
     query: str,
     max_per_source: int = 50,
-    fetch_fulltext: bool = False
+    fetch_fulltext: bool = False,
+    sources: list = None
 ) -> pd.DataFrame:
 
     print(f"\nStarting retrieval for: '{query}'")
 
-    # Check cache first
-    cache_key = f"{query}_{max_per_source}_{'ft' if fetch_fulltext else 'abs'}"
+    # If no sources specified, use all
+    if not sources:
+        sources = ["PubMed", "OpenAlex", "Semantic Scholar", "arXiv"]
+
+    # Cache key includes the sources list (sorted to ensure consistency)
+    cache_key = f"{query}_{max_per_source}_{'ft' if fetch_fulltext else 'abs'}_{'_'.join(sorted(sources))}"
     cached = load_from_cache(cache_key, max_per_source)
     if cached is not None:
         df = pd.DataFrame(cached)
@@ -33,21 +38,25 @@ def retrieve_all_papers(
 
     all_papers = []
 
-    print("\nQuerying OpenAlex...")
-    all_papers += search_openalex(query, max_per_source)
+    # Query only selected sources
+    if "OpenAlex" in sources:
+        print("\nQuerying OpenAlex...")
+        all_papers += search_openalex(query, max_per_source)
 
-    print("\nQuerying Semantic Scholar...")
-    all_papers += search_semantic_scholar(query, max_per_source)
+    if "Semantic Scholar" in sources:
+        print("\nQuerying Semantic Scholar...")
+        all_papers += search_semantic_scholar(query, max_per_source)
 
-    if detected in MEDICAL_FIELDS or detected is None:
+    if "PubMed" in sources and (detected in MEDICAL_FIELDS or detected is None):
         print("\nQuerying PubMed...")
         all_papers += search_pubmed(query, max_per_source)
 
-    if detected not in MEDICAL_FIELDS or detected is None:
+    if "arXiv" in sources and (detected not in MEDICAL_FIELDS or detected is None):
         print("\nQuerying arXiv...")
         all_papers += search_arxiv(query, max_per_source)
 
-    if detected in MEDICAL_FIELDS:
+    # Optional extra for medical + arXiv
+    if "arXiv" in sources and detected in MEDICAL_FIELDS:
         print("\nQuerying arXiv (medical AI subset)...")
         all_papers += search_arxiv(query, max_results=30)
 
@@ -79,7 +88,7 @@ def retrieve_all_papers(
         enriched = enrich_with_fulltext(papers_list)
         df = pd.DataFrame(enriched)
 
-    # Save to cache
+    # Save to cache (include sources in cache key)
     save_to_cache(cache_key, max_per_source, df.to_dict(orient="records"))
 
     return df
