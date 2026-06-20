@@ -116,49 +116,30 @@ def generate_report(
     lines += ["SECTION 3-PRIMARY RESEARCH GAPS", "-" * 40]
 
     if not gaps:
-        lines.append(
-            "No significant research gaps were identified for this topic.")
+        lines.append("No significant research gaps were identified for this topic.")
     else:
-        lines.append(
-            f"The analysis identified {len(gaps)} research gaps "
-            f"({len(high_gaps)} high priority, {len(medium_gaps)} medium priority):"
-        )
+        lines.append(f"The analysis identified {len(gaps)} research gaps:")
         lines.append("")
 
         for i, gap in enumerate(gaps, 1):
-            kws = gap.get("keywords", [])
-            keyword_str = ", ".join(kws[:3]) if kws else "this subtopic"
-
-            lines.append(
-                f"Gap {i}-{gap['gap_type']} [{gap['severity']} Priority]")
-            lines.append(gap["description"])
-
-            if gap["gap_type"] == "Adjacent Gap":
-                lines.append(
-                    f"Research opportunity: Given the proximity of this gap to a "
-                    f"well-studied cluster, researchers familiar with the adjacent "
-                    f"literature are well-positioned to extend their work into "
-                    f"{keyword_str}."
-                )
-            elif gap["gap_type"] == "Temporal Gap":
-                lines.append(
-                    f"Research opportunity: Modern methods-including large language "
-                    f"models, improved neuroimaging, and larger datasets-could "
-                    f"substantially advance understanding of {keyword_str} beyond "
-                    f"what was possible when this area was last studied."
-                )
-            else:
-                lines.append(
-                    f"Research opportunity: A systematic review or empirical study "
-                    f"focused specifically on {keyword_str} would directly address "
-                    f"this gap and contribute novel findings to the field."
-                )
-
-            if gap.get("sample_titles"):
-                lines.append("Existing work in this cluster:")
-                for t in gap["sample_titles"][:2]:
-                    lines.append(f"  • {t}")
+            lines.append(f"Gap {i} — {gap['gap_type']} [{gap['severity']} Priority]")
             lines.append("")
+            lines.append(gap["description"])
+            lines.append("")
+            lines.append("What this means:")
+            lines.append(gap["what_it_means"])
+            lines.append("")
+            lines.append("What you can do:")
+            lines.append(gap["what_to_do"])
+            lines.append("")
+        
+        if gap.get("titles"):
+            lines.append("Papers in this gap cluster:")
+            for title in gap["titles"][:5]:
+                lines.append(f"  • {title}")
+        lines.append("")
+        lines.append("-" * 40)
+        lines.append("")
 
     # ── Section 4: Contradictions ─────────────────────────────────────────
     lines += ["SECTION 4-CONTRADICTIONS AND UNRESOLVED DEBATES", "-" * 40]
