@@ -127,6 +127,20 @@ Approximately 40-60% of papers will have full text available.
 | arXiv | CS / Physics |
     """)
 
+    # ── NEW: Source Selection ───────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**Choose Data Sources**")
+    st.markdown("Select one or more databases to search. Unchecking all will query all available sources.")
+
+    all_sources = ["PubMed", "OpenAlex", "Semantic Scholar", "arXiv"]
+    selected_sources = st.multiselect(
+        "Sources",
+        options=all_sources,
+        default=all_sources,
+        help="Limit retrieval to specific databases for faster and more focused results."
+    )
+    st.caption("Tip: Uncheck sources to reduce retrieval time and avoid cross‑field noise.")
+
     st.markdown("---")
     st.markdown("**Field Detection**")
     st.markdown("""
@@ -170,7 +184,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.markdown(
-    '<div class="subtitle">Automated literature analysis - retrieve papers, '
+    '<div class="subtitle">Automated literature analysis — retrieve papers, '
     'map the knowledge landscape, and identify what has not been studied yet.</div>',
     unsafe_allow_html=True
 )
@@ -199,28 +213,28 @@ identifying:
         """)
     with col2:
         st.markdown("""
-**How it works - step by step**
+**How it works — step by step**
 
-1. **Retrieval** - Papers are fetched from PubMed, OpenAlex, Semantic
+1. **Retrieval** — Papers are fetched from PubMed, OpenAlex, Semantic
    Scholar, and arXiv using their free APIs
 
-2. **Full text** - Where available, full paper text is retrieved from
+2. **Full text** — Where available, full paper text is retrieved from
    PubMed Central, arXiv PDFs, and Unpaywall open access links
 
-3. **Embeddings** - Each paper is converted into a 384-dimensional vector
+3. **Embeddings** — Each paper is converted into a 384-dimensional vector
    using a Sentence Transformer model. Papers about similar topics get
    similar vectors.
 
-4. **Clustering** - Papers are grouped into subtopic clusters automatically.
+4. **Clustering** — Papers are grouped into subtopic clusters automatically.
    The system determines the number of clusters without being told.
 
-5. **Gap detection** - Clusters with very few papers, or clusters adjacent
+5. **Gap detection** — Clusters with very few papers, or clusters adjacent
    to well-studied areas but themselves thin, are flagged as gaps.
 
-6. **Contradiction detection** - Pairs of papers on the same topic but with
+6. **Contradiction detection** — Pairs of papers on the same topic but with
    opposing conclusions are identified.
 
-7. **Report** - All findings are compiled into a structured plain-English
+7. **Report** — All findings are compiled into a structured plain-English
    report you can download.
         """)
 
@@ -237,7 +251,7 @@ st.markdown("""
 <b>Tips for a good query:</b> Be specific but not too narrow.
 "Depression treatment in adolescents" works better than "depression" (too broad)
 or "CBT outcomes in 14-year-old females in Scotland" (too narrow).
-The system works for any academic field - medicine, computer science,
+The system works for any academic field — medicine, computer science,
 economics, physics, social science, law, and more.
 </div>
 """, unsafe_allow_html=True)
@@ -316,7 +330,7 @@ if run_button and topic.strip():
 
     def update_progress(step, total, message):
         progress_bar.progress(step / total)
-        status_text.markdown(f"**Step {step} of {total}** - {message}")
+        status_text.markdown(f"**Step {step} of {total}** — {message}")
 
     try:
         update_progress(1, 7,
@@ -327,7 +341,8 @@ if run_button and topic.strip():
         df = retrieve_all_papers(
             topic,
             max_per_source=max_per_source,
-            fetch_fulltext=fetch_fulltext
+            fetch_fulltext=fetch_fulltext,
+            sources=selected_sources   # <-- NEW: pass selected sources
         )
 
         if df.empty or len(df) < 3:
@@ -461,7 +476,7 @@ Red = underexplored.
                 "label": "Subtopic Cluster",
                 "density": "Coverage Level"
             },
-            title=f"Distribution of Research Effort - {topic.title()}"
+            title=f"Distribution of Research Effort — {topic.title()}"
         )
         fig.update_layout(
             height=420,
@@ -498,7 +513,7 @@ Red = underexplored.
             }.get(row["density"], "Unknown")
 
             with st.expander(
-                f"{row['label']} - {row['paper_count']} papers - {coverage}"
+                f"{row['label']} — {row['paper_count']} papers — {coverage}"
             ):
                 st.markdown(f"**Keywords:** {kws}")
                 st.markdown(f"**Year range:** {year_str}")
@@ -519,12 +534,12 @@ Red = underexplored.
 <b>What is a research gap?</b> A research gap is an angle of a topic that
 has not been studied, or has been studied very little. Three types are detected:
 <ul>
-<li><b>Underexplored Subtopic</b> - a cluster exists but has only 1-2 papers.
+<li><b>Underexplored Subtopic</b> — a cluster exists but has only 1-2 papers.
 The topic exists in the literature but almost nobody has worked on it.</li>
-<li><b>Adjacent Gap</b> - a thin cluster sits right next to a well-studied
+<li><b>Adjacent Gap</b> — a thin cluster sits right next to a well-studied
 cluster. Researchers are publishing nearby but have not crossed into this
 angle. Especially valuable because existing methodology can be reused.</li>
-<li><b>Temporal Gap</b> - a subtopic had papers years ago but nothing recent.
+<li><b>Temporal Gap</b> — a subtopic had papers years ago but nothing recent.
 Modern methods have not been applied to it. Lower risk to pursue because
 prior work exists as a foundation.</li>
 </ul>
@@ -609,7 +624,7 @@ Each gap includes what it means in plain English and a concrete recommendation.
                         st.markdown(
                             f"**Why this is especially valuable:** "
                             f"The last paper on this subtopic was from "
-                            f"{gap.get('last_paper_year', 'unknown')} - "
+                            f"{gap.get('last_paper_year', 'unknown')} — "
                             f"{gap.get('years_since', '?')} years ago. "
                             f"Replication studies with modern methods are "
                             f"among the most reliably publishable research."
@@ -635,7 +650,7 @@ Each gap includes what it means in plain English and a concrete recommendation.
 <div class="info-box">
 <b>What is a contradiction?</b> Two papers are flagged as contradictory
 when they address the same research question (measured by semantic
-similarity of abstracts) but reach opposing conclusions - one reports
+similarity of abstracts) but reach opposing conclusions — one reports
 a positive or significant finding, the other reports a null or negative
 finding. These represent unresolved debates where more research is needed.
 <br><br>
@@ -725,8 +740,8 @@ Weak = flagged but requires manual review to confirm.
         st.markdown("""
 <div class="info-box">
 <b>What this analyses:</b> Research is not equally distributed across all
-populations. Some groups - by geography, age, gender, or socioeconomic
-status - are systematically underrepresented in the academic literature.
+populations. Some groups — by geography, age, gender, or socioeconomic
+status — are systematically underrepresented in the academic literature.
 This section scans all retrieved abstracts for mentions of specific
 population groups and flags where the literature has blind spots.
 <br><br>
@@ -821,7 +836,7 @@ A High gap means fewer than 5% of papers address that group.
         st.markdown("""
 <div class="info-box">
 <b>What you are looking at:</b> Each circle is a paper. Two papers are
-connected by a line if their abstracts are semantically similar - meaning
+connected by a line if their abstracts are semantically similar — meaning
 they likely address the same or adjacent research questions.
 <br><br>
 <b>Node size</b> reflects how many connections a paper has. Larger nodes
@@ -834,7 +849,7 @@ Use the slider to adjust how strict the similarity threshold is.
 """, unsafe_allow_html=True)
 
         threshold = st.slider(
-            "Similarity threshold - lower shows more connections, "
+            "Similarity threshold — lower shows more connections, "
             "higher shows only the strongest",
             min_value=0.3,
             max_value=0.9,
@@ -874,7 +889,7 @@ strong candidates for research gap investigation.
 
             if network_stats.get("top_connected"):
                 st.markdown(
-                    "**Most connected papers - core of the field:**"
+                    "**Most connected papers — core of the field:**"
                 )
                 for node_id, degree in network_stats["top_connected"]:
                     title = G.nodes[node_id]["title"]
@@ -888,8 +903,8 @@ strong candidates for research gap investigation.
         )
         st.markdown("""
 <div class="info-box">
-This report synthesises all analysis outputs - gaps, contradictions,
-demographic representation, and cluster landscape - into a single
+This report synthesises all analysis outputs — gaps, contradictions,
+demographic representation, and cluster landscape — into a single
 structured document written in plain academic English. It is suitable
 for including in a dissertation, grant application, or systematic review
 as a starting point. Download it using the button below.
