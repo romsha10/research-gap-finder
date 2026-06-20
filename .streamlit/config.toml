@@ -2,7 +2,7 @@
 base = "light"
 
 [server]
-headless = false
+headless = true
 port = 8501
 
 [browser]
