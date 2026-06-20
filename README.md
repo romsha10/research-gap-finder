@@ -7,7 +7,7 @@ and generates a structured research gap report.
 
 ## Live Demo
 
-[Coming soon - Streamlit Cloud deployment]
+https://research-gap-finder.streamlit.app/
 
 ## What It Does
 
