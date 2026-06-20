@@ -73,7 +73,7 @@ with st.sidebar:
 2. Choose how many papers to retrieve per source
 3. Optionally enable full text retrieval
 4. Click **Run Analysis**
-5. Navigate the tabs to explore results
+5. Explore the tabs to find your research gaps
     """)
 
     st.markdown("---")
@@ -115,17 +115,6 @@ Full text mode is enabled. Expect an additional 2-5 minutes.
 Approximately 40-60% of papers will have full text available.
 </div>
 """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("**Active Databases**")
-    st.markdown("""
-| Database | Coverage |
-|---|---|
-| PubMed | Biomedical |
-| OpenAlex | All fields |
-| Semantic Scholar | All fields |
-| arXiv | CS / Physics |
-    """)
 
     st.markdown("---")
     st.markdown("**Choose Data Sources**")
@@ -303,14 +292,7 @@ if run_button and topic.strip():
         from src.analysis.gap_detector import (
             detect_research_gaps, format_gaps_as_text
         )
-        from src.processing.contradiction import detect_contradictions
-        from src.analysis.demographics import (
-            analyse_demographics,
-            identify_demographic_gaps,
-            format_demographic_report
-        )
         from src.report.generator import generate_report
-        # ── Removed citation_graph imports ──
         load_dotenv()
 
     st.markdown("---")
@@ -327,7 +309,7 @@ if run_button and topic.strip():
         status_text.markdown(f"**Step {step} of {total}** — {message}")
 
     try:
-        update_progress(1, 6,  # reduced steps because we removed citation graph
+        update_progress(1, 5,
                         "Retrieving papers" +
                         (" and full texts" if fetch_fulltext else "") +
                         " from academic databases..."
@@ -346,38 +328,28 @@ if run_button and topic.strip():
             )
             st.stop()
 
-        update_progress(2, 6,
+        update_progress(2, 5,
                         f"Generating semantic embeddings for {len(df)} papers..."
                         )
         df, embeddings = generate_embeddings(df)
 
-        update_progress(3, 6, "Clustering papers into subtopic groups...")
+        update_progress(3, 5, "Clustering papers into subtopic groups...")
         df, reduced = cluster_papers(embeddings, df, min_cluster_size=2)
         summary = describe_clusters(df)
         keywords = get_cluster_keywords(df)
 
-        update_progress(4, 6, "Identifying research gaps...")
+        update_progress(4, 5, "Identifying research gaps...")
         gaps = detect_research_gaps(df, embeddings, summary, keywords)
         gap_report = format_gaps_as_text(gaps, topic)
 
-        update_progress(5, 6, "Detecting contradictions between papers...")
-        contradictions = detect_contradictions(
-            df, embeddings, similarity_threshold=0.55
-        )
-
-        update_progress(6, 6, "Analysing demographics and generating report...")
-        demo_results = analyse_demographics(df)
-        demo_gaps = identify_demographic_gaps(demo_results, df)
-        demo_report = format_demographic_report(demo_gaps, topic)
-
+        update_progress(5, 5, "Generating structured report...")
+        # We no longer pass contradictions/demo_gaps – we simply ignore them
         ai_report = generate_report(
-            topic, df, summary, keywords, gaps, contradictions, demo_gaps
+            topic, df, summary, keywords, gaps, [], []
         )
 
         progress_bar.progress(1.0)
         status_text.markdown("**Analysis complete.**")
-
-        # ── No citation graph generation ──
 
     except Exception as e:
         st.error(f"An error occurred during analysis: {str(e)}")
@@ -394,15 +366,13 @@ if run_button and topic.strip():
         unsafe_allow_html=True
     )
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3 = st.columns(3)
     m1.metric("Papers Retrieved", len(df))
     m2.metric(
         "Subtopic Clusters",
         len(summary[summary["cluster_id"] != -1])
     )
     m3.metric("Research Gaps", len(gaps))
-    m4.metric("Contradictions", len(contradictions))
-    m5.metric("Demographic Gaps", len(demo_gaps))
 
     sources = df["source"].value_counts().to_dict()
     source_str = "  |  ".join(f"{k}: {v}" for k, v in sources.items())
@@ -418,12 +388,9 @@ if run_button and topic.strip():
     st.markdown("---")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    # Removed "Citation Network" tab
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "Knowledge Landscape",
         "Research Gaps",
-        "Contradictions",
-        "Demographics",
         "Full Report",
         "All Papers"
     ])
@@ -508,14 +475,12 @@ Red = underexplored.
                 st.markdown(f"**Keywords:** {kws}")
                 st.markdown(f"**Year range:** {year_str}")
                 st.markdown(f"**Coverage:** {coverage}")
-                # ── Show ALL paper titles in this cluster ──
                 cluster_df = df[df["cluster"] == cid]
                 titles = cluster_df["title"].dropna().tolist()
                 if titles:
                     st.markdown("**All papers in this cluster:**")
                     for t in titles:
                         st.markdown(f"- {t}")
-                # Also show sample abstracts? too much, but we can optionally show first line.
 
     # ── TAB 2: Research Gaps ──────────────────────────────────────────────────
     with tab2:
@@ -581,265 +546,26 @@ Each gap includes a plain‑English explanation and a concrete recommendation.
 
                     with col1:
                         st.markdown("**What this means for researchers:**")
-                        st.info(
-                            gap.get("what_it_means", "See description above.")
-                        )
+                        st.info(gap["what_it_means"])
 
                     with col2:
                         st.markdown("**Recommended research action:**")
-                        st.success(
-                            gap.get("what_to_do", "See description above.")
-                        )
+                        st.success(gap["what_to_do"])
 
-                    if gap.get("keywords") and \
-                            gap["keywords"] != ["single paper cluster"]:
-                        st.markdown(
-                            f"**Keywords:** "
-                            f"{', '.join(gap['keywords'][:5])}"
-                        )
-
-                    # ── Show ALL paper titles in this gap cluster ──
-                    if gap.get("sample_titles"):
+                    if gap.get("paper_list"):
                         st.markdown("**All papers in this gap cluster:**")
-                        # sample_titles is a list, but may be truncated from gap_detector.
-                        # We'll fetch from the dataframe using cluster_id.
-                        cid = gap["cluster_id"]
-                        cluster_df = df[df["cluster"] == cid]
-                        titles = cluster_df["title"].dropna().tolist()
-                        if titles:
-                            for t in titles:
-                                st.markdown(f"- {t}")
-                        else:
-                            # fallback to stored sample_titles
-                            for t in gap["sample_titles"][:5]:
-                                st.markdown(f"- {t}")
+                        for paper in gap["paper_list"]:
+                            st.markdown(paper)
 
-                    if gap["gap_type"] == "Adjacent Gap":
-                        st.markdown(
-                            f"**Why this is especially valuable:** "
-                            f"Similarity score of "
-                            f"{gap.get('similarity_to_dense', 'N/A')} "
-                            f"means this gap is very close to an active "
-                            f"research area. You can directly borrow "
-                            f"methods from that neighbouring cluster."
-                        )
-                    elif gap["gap_type"] == "Temporal Gap":
-                        st.markdown(
-                            f"**Why this is especially valuable:** "
-                            f"The last paper on this subtopic was from "
-                            f"{gap.get('last_paper_year', 'unknown')} — "
-                            f"{gap.get('years_since', '?')} years ago. "
-                            f"Replication studies with modern methods are "
-                            f"among the most reliably publishable research."
-                        )
-
-            st.markdown("---")
-            with st.expander("Download plain-text gap summary"):
-                st.text(gap_report)
-                st.download_button(
-                    "Download Gap Summary (.txt)",
-                    gap_report,
-                    file_name="gap_summary.txt",
-                    mime="text/plain"
-                )
-
-    # ── TAB 3: Contradictions ─────────────────────────────────────────────────
+    # ── TAB 3: Full Report ────────────────────────────────────────────────────
     with tab3:
-        st.markdown(
-            '<div class="section-header">Contradictions in the Literature</div>',
-            unsafe_allow_html=True
-        )
-        st.markdown("""
-<div class="info-box">
-<b>What is a contradiction?</b> Two papers are flagged as contradictory
-when they address the same research question (measured by semantic
-similarity of abstracts) but reach opposing conclusions — one reports
-a positive or significant finding, the other reports a null or negative
-finding. These represent unresolved debates where more research is needed.
-<br><br>
-<b>Strength levels:</b> Strong = high semantic similarity and clear
-sentiment opposition. Moderate = one or both signals is partial.
-Weak = flagged but requires manual review to confirm.
-</div>
-""", unsafe_allow_html=True)
-
-        if not contradictions:
-            st.info(
-                "No contradictions were detected in the retrieved literature. "
-                "The papers appear broadly consistent in their conclusions."
-            )
-        else:
-            st.markdown(
-                f"**{len(contradictions)} potential contradiction(s) detected** "
-                f"across {len(df)} papers."
-            )
-
-            strong = [
-                c for c in contradictions
-                if c["contradiction_strength"] == "Strong"
-            ]
-            moderate = [
-                c for c in contradictions
-                if c["contradiction_strength"] == "Moderate"
-            ]
-            weak = [
-                c for c in contradictions
-                if c["contradiction_strength"] == "Weak"
-            ]
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Strong Contradictions", len(strong))
-            c2.metric("Moderate Contradictions", len(moderate))
-            c3.metric("Weak / Possible", len(weak))
-
-            st.markdown("---")
-
-            for i, c in enumerate(contradictions[:10], 1):
-                with st.expander(
-                    f"Contradiction {i}  |  {c['contradiction_strength']}  "
-                    f"|  Semantic similarity: {c['similarity']}"
-                ):
-                    st.markdown(
-                        "These two papers address the same research question "
-                        "but reach different conclusions:"
-                    )
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**Paper A**")
-                        st.markdown(f"Year: {c['paper_a_year']}")
-                        st.markdown(f"Source: {c['paper_a_source']}")
-                        st.markdown(
-                            f"Conclusion signal: **{c['sentiment_a']}**"
-                        )
-                        st.markdown(f"Title: {c['paper_a_title']}")
-                        if c.get("paper_a_url"):
-                            st.markdown(
-                                f"[View paper]({c['paper_a_url']})"
-                            )
-                    with col2:
-                        st.markdown("**Paper B**")
-                        st.markdown(f"Year: {c['paper_b_year']}")
-                        st.markdown(f"Source: {c['paper_b_source']}")
-                        st.markdown(
-                            f"Conclusion signal: **{c['sentiment_b']}**"
-                        )
-                        st.markdown(f"Title: {c['paper_b_title']}")
-                        if c.get("paper_b_url"):
-                            st.markdown(
-                                f"[View paper]({c['paper_b_url']})"
-                            )
-                    st.caption(
-                        f"Sentiment divergence: {c['sentiment_divergence']} "
-                        f"| Sources: {c['paper_a_source']} "
-                        f"vs {c['paper_b_source']}"
-                    )
-
-    # ── TAB 4: Demographics ───────────────────────────────────────────────────
-    with tab4:
-        st.markdown(
-            '<div class="section-header">Demographic Representation Analysis</div>',
-            unsafe_allow_html=True
-        )
-        st.markdown("""
-<div class="info-box">
-<b>What this analyses:</b> Research is not equally distributed across all
-populations. Some groups — by geography, age, gender, or socioeconomic
-status — are systematically underrepresented in the academic literature.
-This section scans all retrieved abstracts for mentions of specific
-population groups and flags where the literature has blind spots.
-<br><br>
-A Critical gap means zero papers mention that population.
-A High gap means fewer than 5% of papers address that group.
-</div>
-""", unsafe_allow_html=True)
-
-        geo_data = demo_results.get("geography", {})
-        age_data = demo_results.get("age", {})
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if geo_data:
-                geo_df = pd.DataFrame([
-                    {
-                        "Region": k,
-                        "Papers Mentioning": v["count"],
-                        "Percentage of Total": v["percentage"]
-                    }
-                    for k, v in geo_data.items()
-                ])
-                fig_geo = px.bar(
-                    geo_df,
-                    x="Region",
-                    y="Percentage of Total",
-                    title="Geographic Representation of Studies (%)",
-                    color="Percentage of Total",
-                    color_continuous_scale=[
-                        "#e74c3c", "#f39c12", "#2ecc71"
-                    ],
-                    labels={"Percentage of Total": "% of papers"}
-                )
-                fig_geo.update_layout(
-                    height=380,
-                    xaxis_tickangle=-35,
-                    plot_bgcolor="#fafafa"
-                )
-                st.plotly_chart(fig_geo, use_container_width=True)
-
-        with col2:
-            if age_data:
-                age_df = pd.DataFrame([
-                    {"Age Group": k, "Papers": v["count"]}
-                    for k, v in age_data.items()
-                    if v["count"] > 0
-                ])
-                if not age_df.empty:
-                    fig_age = px.pie(
-                        age_df,
-                        names="Age Group",
-                        values="Papers",
-                        title="Age Group Representation",
-                        color_discrete_sequence=px.colors.qualitative.Set2
-                    )
-                    fig_age.update_layout(height=380)
-                    st.plotly_chart(fig_age, use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("**Identified Representation Gaps**")
-
-        if not demo_gaps:
-            st.success("No major demographic representation gaps identified.")
-        else:
-            by_category = {}
-            for gap in demo_gaps:
-                by_category.setdefault(gap["category"], []).append(gap)
-
-            for category, cat_gaps in by_category.items():
-                st.markdown(f"**{category.title()}**")
-                for gap in cat_gaps:
-                    severity_prefix = {
-                        "Critical": "CRITICAL",
-                        "High": "HIGH",
-                        "Medium": "MEDIUM"
-                    }.get(gap["severity"], "")
-                    st.markdown(
-                        f"- [{severity_prefix}] {gap['description']}"
-                    )
-                st.markdown("")
-
-        with st.expander("View full demographic report"):
-            st.text(demo_report)
-
-    # ── TAB 5: Full Report ────────────────────────────────────────────────────
-    with tab5:
         st.markdown(
             '<div class="section-header">Full Research Gap Report</div>',
             unsafe_allow_html=True
         )
         st.markdown("""
 <div class="info-box">
-This report synthesises all analysis outputs — gaps, contradictions,
-demographic representation, and cluster landscape — into a single
+This report synthesises all analysis outputs into a single
 structured document written in plain academic English. It is suitable
 for including in a dissertation, grant application, or systematic review
 as a starting point. Download it using the button below.
@@ -849,8 +575,7 @@ as a starting point. Download it using the button below.
         st.markdown(
             f"**Topic:** {topic.title()}  |  "
             f"**Papers analysed:** {len(df)}  |  "
-            f"**Gaps identified:** {len(gaps)}  |  "
-            f"**Contradictions:** {len(contradictions)}"
+            f"**Gaps identified:** {len(gaps)}"
         )
         st.markdown("---")
         st.text(ai_report)
@@ -866,8 +591,8 @@ as a starting point. Download it using the button below.
             use_container_width=True
         )
 
-    # ── TAB 6: All Papers ─────────────────────────────────────────────────────
-    with tab6:
+    # ── TAB 4: All Papers ─────────────────────────────────────────────────────
+    with tab4:
         st.markdown(
             '<div class="section-header">All Retrieved Papers</div>',
             unsafe_allow_html=True
