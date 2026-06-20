@@ -80,10 +80,11 @@ def extract_text_from_pdf_url(pdf_url: str) -> Optional[str]:
             with pdfplumber.open(pdf_bytes) as pdf:
                 for page in pdf.pages[:20]:  # cap at 20 pages
                     text = page.extract_text()
-                    if text:
+                    if text and isinstance(text, str):
                         text_parts.append(text)
             full_text = "\n".join(text_parts)
-            if len(full_text.strip()) > 500:
+            # Ensure full_text is a string and has enough content
+            if isinstance(full_text, str) and len(full_text.strip()) > 500:
                 return clean_extracted_text(full_text)
         except Exception:
             pass
@@ -95,9 +96,11 @@ def extract_text_from_pdf_url(pdf_url: str) -> Optional[str]:
             doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
             text_parts = []
             for page_num in range(min(20, len(doc))):
-                text_parts.append(doc[page_num].get_text())
+                page_text = doc[page_num].get_text()
+                if page_text and isinstance(page_text, str):
+                    text_parts.append(page_text)
             full_text = "\n".join(text_parts)
-            if len(full_text.strip()) > 500:
+            if isinstance(full_text, str) and len(full_text.strip()) > 500:
                 return clean_extracted_text(full_text)
         except Exception:
             pass
@@ -108,11 +111,16 @@ def extract_text_from_pdf_url(pdf_url: str) -> Optional[str]:
         return None
 
 
-def clean_extracted_text(text: str) -> str:
+def clean_extracted_text(text: str) -> Optional[str]:
     """
     Cleans raw PDF text by removing common academic paper noise.
     Keeps the body text - removes headers, footers, references section.
+    Returns None if input is not a string or if cleaning yields empty text.
     """
+    # Defensive check: if text is not a string, return None
+    if not isinstance(text, str):
+        return None
+
     lines = text.split("\n")
     cleaned_lines = []
 
@@ -132,6 +140,9 @@ def clean_extracted_text(text: str) -> str:
     in_references = False
 
     for line in lines:
+        # Ensure line is a string before processing
+        if not isinstance(line, str):
+            continue
         line_lower = line.lower().strip()
 
         # Stop at references section - not useful for gap analysis
@@ -156,6 +167,10 @@ def clean_extracted_text(text: str) -> str:
     # Collapse multiple spaces
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
+    # Return None if cleaning resulted in empty or too short text
+    if not cleaned or len(cleaned) < 200:
+        return None
+
     return cleaned
 
 
@@ -167,7 +182,7 @@ def get_pmc_fulltext(pmid: str) -> Optional[str]:
     Uses the NCBI efetch API - same one we already use, no extra key.
     About 40% of PubMed papers have a free PMC full text version.
     """
-    if not pmid:
+    if not pmid or not isinstance(pmid, str):
         return None
 
     try:
@@ -212,7 +227,11 @@ def get_pmc_fulltext(pmid: str) -> Optional[str]:
         if fetch_response.status_code != 200:
             return None
 
-        return extract_text_from_pmc_xml(fetch_response.text)
+        xml_text = fetch_response.text
+        if not isinstance(xml_text, str):
+            return None
+
+        return extract_text_from_pmc_xml(xml_text)
 
     except Exception:
         return None
@@ -224,6 +243,9 @@ def extract_text_from_pmc_xml(xml_text: str) -> Optional[str]:
     Focuses on abstract, introduction, methods, results, discussion.
     Skips references and acknowledgements.
     """
+    if not isinstance(xml_text, str):
+        return None
+
     import xml.etree.ElementTree as ET
 
     try:
@@ -243,14 +265,14 @@ def extract_text_from_pmc_xml(xml_text: str) -> Optional[str]:
     # Extract abstract
     for abstract in root.findall(".//abstract"):
         for elem in abstract.iter():
-            if elem.text:
+            if elem.text and isinstance(elem.text, str):
                 text_parts.append(elem.text.strip())
 
     # Extract body sections
     for sec in root.findall(".//sec"):
         title_elem = sec.find("title")
         section_title = ""
-        if title_elem is not None and title_elem.text:
+        if title_elem is not None and title_elem.text and isinstance(title_elem.text, str):
             section_title = title_elem.text.lower().strip()
 
         # Skip references and acknowledgements
@@ -265,7 +287,7 @@ def extract_text_from_pmc_xml(xml_text: str) -> Optional[str]:
             target in section_title for target in target_sections
         ):
             for elem in sec.iter():
-                if elem.text and len(elem.text.strip()) > 30:
+                if elem.text and isinstance(elem.text, str) and len(elem.text.strip()) > 30:
                     text_parts.append(elem.text.strip())
 
     if not text_parts:
@@ -274,7 +296,10 @@ def extract_text_from_pmc_xml(xml_text: str) -> Optional[str]:
     full_text = " ".join(text_parts)
     full_text = re.sub(r"\s+", " ", full_text).strip()
 
-    return full_text if len(full_text) > 500 else None
+    if len(full_text) > 500:
+        return full_text
+    else:
+        return None
 
 
 # ── arXiv Full Text ───────────────────────────────────────────────────────────
@@ -284,7 +309,7 @@ def get_arxiv_fulltext(arxiv_id: str) -> Optional[str]:
     Downloads and extracts full text from an arXiv paper PDF.
     Every arXiv paper has a freely available PDF - no authentication needed.
     """
-    if not arxiv_id:
+    if not arxiv_id or not isinstance(arxiv_id, str):
         return None
 
     # Clean the ID - remove version suffix if present
@@ -342,7 +367,7 @@ def enrich_with_fulltext(papers: list[dict]) -> list[dict]:
                 if full_text:
                     paper["fulltext_source"] = "Unpaywall OA"
 
-        if full_text and len(full_text) > 500:
+        if full_text and isinstance(full_text, str) and len(full_text) > 500:
             # Use full text but keep abstract as well
             paper["full_text"] = full_text[:8000]  # cap at 8000 chars
             paper["fulltext_available"] = True
