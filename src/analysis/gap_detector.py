@@ -6,29 +6,50 @@ from collections import Counter
 
 
 def _extract_topic_from_titles(titles: list[str]) -> str:
-    """Extracts a human-readable topic from paper titles."""
+    """
+    Extract a human-readable topic from a list of paper titles.
+    Uses the most common significant words to form a concise topic label.
+    """
     if not titles:
         return "an underexplored area"
     
-    # Remove common words and join to form a phrase
+    # Combine all titles, remove common stopwords, pick most frequent meaningful words
     stopwords = {
         "the", "and", "for", "with", "from", "this", "that", "are",
         "was", "were", "have", "has", "been", "being", "study", "paper",
         "using", "based", "among", "their", "more", "than", "into",
         "about", "its", "not", "but", "can", "all", "our", "which",
-        "analysis", "research", "investigation", "examination"
+        "analysis", "research", "investigation", "examination", "approach",
+        "method", "model", "framework", "system", "approach", "technique"
     }
     
-    # Get first 3-4 significant words from the first title
-    first_title = titles[0]
-    words = re.findall(r'\b[a-zA-Z]{4,}\b', first_title)
-    meaningful = [w for w in words if w.lower() not in stopwords]
+    all_words = []
+    for title in titles:
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', title.lower())
+        all_words.extend([w for w in words if w not in stopwords])
     
-    if len(meaningful) >= 2:
-        return " ".join(meaningful[:3])
-    else:
-        # Fallback: use entire title
-        return first_title[:60] + ("..." if len(first_title) > 60 else "")
+    if not all_words:
+        # fallback: use the first title truncated
+        return titles[0][:60] + ("..." if len(titles[0]) > 60 else "")
+    
+    freq = Counter(all_words)
+    # Take top 3 most common words
+    top_words = [w for w, _ in freq.most_common(3)]
+    return " ".join(top_words)
+
+
+def _format_paper_list(cluster_papers: pd.DataFrame) -> list[str]:
+    """Format paper titles with years and links for display."""
+    paper_lines = []
+    for _, paper in cluster_papers.iterrows():
+        title = paper.get("title", "Unknown title")
+        year = paper.get("year", "?")
+        url = paper.get("url", "")
+        line = f"• {title} ({year})"
+        if url:
+            line += f" - [Link]({url})"
+        paper_lines.append(line)
+    return paper_lines
 
 
 def detect_research_gaps(
@@ -37,9 +58,12 @@ def detect_research_gaps(
     cluster_summary: pd.DataFrame,
     cluster_keywords: dict
 ) -> list[dict]:
-
+    """
+    Detect research gaps from clusters and return a list of gap dicts
+    with clear descriptions and specific research suggestions.
+    """
     gaps = []
-    
+
     # Build cluster centroids
     cluster_centroids = {}
     for cid in df["cluster"].unique():
@@ -50,14 +74,10 @@ def detect_research_gaps(
         cluster_centroids[cid] = cluster_embeddings.mean(axis=0)
 
     real_clusters = cluster_summary[cluster_summary["cluster_id"] != -1]
-    
-    dense_clusters = real_clusters[
-        real_clusters["paper_count"] >= 5
-    ]["cluster_id"].tolist()
-    
-    sparse_clusters = real_clusters[
-        real_clusters["paper_count"] <= 2
-    ]["cluster_id"].tolist()
+
+    # Define dense and sparse clusters
+    dense_clusters = real_clusters[real_clusters["paper_count"] >= 5]["cluster_id"].tolist()
+    sparse_clusters = real_clusters[real_clusters["paper_count"] <= 2]["cluster_id"].tolist()
 
     # ── Strategy 1: Underexplored Subtopic ───────────────────────────────
     for _, row in real_clusters.iterrows():
@@ -67,25 +87,18 @@ def detect_research_gaps(
 
         cluster_papers = df[df["cluster"] == cid]
         titles = cluster_papers["title"].dropna().tolist()
-        
-        topic_name = _extract_topic_from_titles(titles)
-        
+        if not titles:
+            continue
+
+        topic = _extract_topic_from_titles(titles)
+        paper_count = len(cluster_papers)
+
         years = []
         for y in cluster_papers["year"]:
             try:
                 years.append(int(y))
             except (ValueError, TypeError):
                 continue
-
-        paper_count = row["paper_count"]
-        
-        # Build paper list with links
-        paper_list = []
-        for _, paper in cluster_papers.iterrows():
-            title = paper.get("title", "Unknown title")
-            url = paper.get("url", "")
-            year = paper.get("year", "?")
-            paper_list.append(f"• {title} ({year})" + (f" - [Link]({url})" if url else ""))
 
         year_context = ""
         if years:
@@ -94,24 +107,30 @@ def detect_research_gaps(
             else:
                 year_context = f"The {len(years)} papers were published between {min(years)} and {max(years)}."
 
+        paper_list = _format_paper_list(cluster_papers)
+
         description = (
-            f"There are only **{paper_count} papers** on **'{topic_name}'** "
-            f"in the entire retrieved literature. "
-            f"{year_context} "
+            f"There are only **{paper_count} papers** on **'{topic}'** "
+            f"in the entire retrieved literature. {year_context} "
             f"This area has been almost completely ignored by researchers."
         )
 
-        what_it_means = (
-            f"'{topic_name}' is a significant research gap. "
-            f"With only {paper_count} paper(s), there is virtually no existing work to compete with. "
-            f"The existing papers are:"
+        what_means = (
+            f"'{topic}' is a **significant research gap**. With only {paper_count} paper(s), "
+            "there is virtually no existing work to compete with. "
+            "The existing papers are listed below."
+        )
+
+        # Generate specific research question
+        research_q = (
+            f"**Suggested research question**: How can modern techniques (e.g., deep learning, "
+            f"large language models) be applied to '{topic}'? or What are the key factors "
+            f"affecting '{topic}' in the context of your broader topic?"
         )
 
         what_to_do = (
-            f"**Recommended research**: Conduct a systematic review or empirical study "
-            f"specifically on '{topic_name}'. "
-            f"Possible research question: 'How does {topic_name} relate to your broader topic?' "
-            f"or 'What are the key factors affecting {topic_name}?'"
+            f"**Recommended action**: Conduct a systematic review or empirical study "
+            f"specifically on '{topic}'. {research_q}"
         )
 
         gaps.append({
@@ -119,9 +138,9 @@ def detect_research_gaps(
             "cluster_id": cid,
             "severity": "High" if paper_count == 1 else "Medium",
             "paper_count": paper_count,
-            "topic_name": topic_name,
+            "topic": topic,
             "description": description,
-            "what_it_means": what_it_means,
+            "what_it_means": what_means,
             "what_to_do": what_to_do,
             "paper_list": paper_list,
             "titles": titles,
@@ -134,20 +153,16 @@ def detect_research_gaps(
             continue
 
         sparse_centroid = cluster_centroids[sparse_cid].reshape(1, -1)
-        
-        # Find best dense neighbour
+
         best_similarity = 0
         best_dense_cid = None
-
         for dense_cid in dense_clusters:
             if dense_cid not in cluster_centroids:
                 continue
             dense_centroid = cluster_centroids[dense_cid].reshape(1, -1)
-            similarity = float(
-                cosine_similarity(sparse_centroid, dense_centroid)[0][0]
-            )
-            if similarity > best_similarity:
-                best_similarity = similarity
+            sim = float(cosine_similarity(sparse_centroid, dense_centroid)[0][0])
+            if sim > best_similarity:
+                best_similarity = sim
                 best_dense_cid = dense_cid
 
         if best_dense_cid is None or best_similarity < 0.50:
@@ -155,45 +170,41 @@ def detect_research_gaps(
 
         sparse_papers = df[df["cluster"] == sparse_cid]
         dense_papers = df[df["cluster"] == best_dense_cid]
-        
         sparse_titles = sparse_papers["title"].dropna().tolist()
         dense_titles = dense_papers["title"].dropna().tolist()
-        
+        if not sparse_titles or not dense_titles:
+            continue
+
         sparse_topic = _extract_topic_from_titles(sparse_titles)
         dense_topic = _extract_topic_from_titles(dense_titles)
-        
         sparse_count = len(sparse_papers)
         dense_count = len(dense_papers)
-        
-        # Build paper list with links
-        paper_list = []
-        for _, paper in sparse_papers.iterrows():
-            title = paper.get("title", "Unknown title")
-            url = paper.get("url", "")
-            year = paper.get("year", "?")
-            paper_list.append(f"• {title} ({year})" + (f" - [Link]({url})" if url else ""))
+        paper_list = _format_paper_list(sparse_papers)
 
         description = (
             f"**'{sparse_topic}'** has only **{sparse_count} papers**, "
             f"but it is semantically close to a well-studied area "
             f"**'{dense_topic}'** which has **{dense_count} papers** "
-            f"(similarity score: {best_similarity:.2f}). "
-            f"Researchers have extensively studied '{dense_topic}' but have ignored "
-            f"'{sparse_topic}' – even though the methods and frameworks could be directly adapted."
+            f"(similarity: {best_similarity:.2f}). Researchers have extensively studied "
+            f"'{dense_topic}' but have ignored '{sparse_topic}' – even though methods "
+            f"from '{dense_topic}' could be directly adapted."
         )
 
-        what_it_means = (
-            f"'{sparse_topic}' is a **high-value research gap** because it's adjacent "
+        what_means = (
+            f"'{sparse_topic}' is a **high‑value research gap** because it is adjacent "
             f"to an active research area. You can borrow existing methodology from "
             f"'{dense_topic}' research and apply it to '{sparse_topic}'."
         )
 
+        research_q = (
+            f"**Suggested research question**: Can methods from '{dense_topic}' be effectively "
+            f"applied to '{sparse_topic}'? or What are the unique challenges of studying "
+            f"'{sparse_topic}' compared to '{dense_topic}'?"
+        )
+
         what_to_do = (
-            f"**Recommended research**: Design a study that adapts the methodology "
-            f"from '{dense_topic}' research and applies it to '{sparse_topic}'. "
-            f"Possible research question: 'Can methods from {dense_topic} be effectively "
-            f"applied to {sparse_topic}?' or 'What are the unique challenges of "
-            f"studying {sparse_topic} compared to {dense_topic}?'"
+            f"**Recommended action**: Design a study that adapts the methodology "
+            f"from '{dense_topic}' research and applies it to '{sparse_topic}'. {research_q}"
         )
 
         gaps.append({
@@ -202,11 +213,11 @@ def detect_research_gaps(
             "adjacent_to_cluster": best_dense_cid,
             "severity": "High",
             "similarity_to_dense": round(best_similarity, 3),
-            "topic_name": sparse_topic,
+            "topic": sparse_topic,
             "dense_topic": dense_topic,
             "paper_count": sparse_count,
             "description": description,
-            "what_it_means": what_it_means,
+            "what_it_means": what_means,
             "what_to_do": what_to_do,
             "paper_list": paper_list,
             "titles": sparse_titles
@@ -217,12 +228,9 @@ def detect_research_gaps(
         cid = row["cluster_id"]
         cluster_papers = df[df["cluster"] == cid]
         titles = cluster_papers["title"].dropna().tolist()
-        
         if not titles:
             continue
-            
-        topic_name = _extract_topic_from_titles(titles)
-        
+
         years = []
         for y in cluster_papers["year"]:
             try:
@@ -235,39 +243,34 @@ def detect_research_gaps(
 
         max_year = max(years)
         current_year = 2025
-        
         if max_year < 2020 and row["paper_count"] >= 2:
             years_since = current_year - max_year
             paper_count = row["paper_count"]
-            
-            # Build paper list with links
-            paper_list = []
-            for _, paper in cluster_papers.iterrows():
-                title = paper.get("title", "Unknown title")
-                url = paper.get("url", "")
-                year = paper.get("year", "?")
-                paper_list.append(f"• {title} ({year})" + (f" - [Link]({url})" if url else ""))
+            topic = _extract_topic_from_titles(titles)
+            paper_list = _format_paper_list(cluster_papers)
 
             description = (
-                f"**'{topic_name}'** has **{paper_count} papers**, "
-                f"but the most recent is from **{max_year}** – {years_since} years ago. "
-                f"This topic was studied in the past but has since been abandoned. "
-                f"Modern techniques (AI, ML, larger datasets) have never been applied to it."
+                f"**'{topic}'** has **{paper_count} papers**, but the most recent is from "
+                f"**{max_year}** – {years_since} years ago. This topic was studied in the past "
+                f"but has since been abandoned. Modern techniques (AI, ML, larger datasets) "
+                f"have never been applied to it."
             )
 
-            what_it_means = (
-                f"'{topic_name}' is a **temporal gap**. The foundational work exists "
-                f"(from {max_year}) but nobody has revisited it with current tools. "
-                f"Replication studies with modern methods are among the most reliably "
-                f"publishable research."
+            what_means = (
+                f"'{topic}' is a **temporal gap**. The foundational work exists (from {max_year}) "
+                f"but nobody has revisited it with current tools. Replication studies with "
+                "modern methods are among the most reliably publishable research."
+            )
+
+            research_q = (
+                f"**Suggested research question**: How do modern AI/ML techniques compare to "
+                f"the {max_year} approaches for '{topic}'? or What new insights can be gained "
+                f"by applying current methods to '{topic}'?"
             )
 
             what_to_do = (
-                f"**Recommended research**: Replicate and extend the {max_year} work "
-                f"on '{topic_name}' using modern methods. "
-                f"Possible research question: 'How do modern AI/ML techniques compare "
-                f"to the {max_year} approaches for {topic_name}?' or 'What new insights "
-                f"can be gained by applying current methods to {topic_name}?'"
+                f"**Recommended action**: Replicate and extend the {max_year} work on '{topic}' "
+                f"using modern methods. {research_q}"
             )
 
             gaps.append({
@@ -277,9 +280,9 @@ def detect_research_gaps(
                 "last_paper_year": max_year,
                 "years_since": years_since,
                 "paper_count": paper_count,
-                "topic_name": topic_name,
+                "topic": topic,
                 "description": description,
-                "what_it_means": what_it_means,
+                "what_it_means": what_means,
                 "what_to_do": what_to_do,
                 "paper_list": paper_list,
                 "titles": titles,
@@ -290,26 +293,31 @@ def detect_research_gaps(
     severity_order = {"High": 0, "Medium": 1, "Low": 2}
     gaps.sort(key=lambda x: severity_order.get(x["severity"], 3))
 
-    # Deduplicate
-    seen_clusters = Counter()
-    deduped = []
+    # Remove duplicate cluster entries (keep only the first two types per cluster)
+    seen = set()
+    unique_gaps = []
     for gap in gaps:
         cid = gap["cluster_id"]
-        if seen_clusters[cid] < 2:
-            deduped.append(gap)
-            seen_clusters[cid] += 1
+        if cid not in seen:
+            seen.add(cid)
+            unique_gaps.append(gap)
+        else:
+            # If we already have a gap for this cluster, skip additional ones
+            continue
 
-    print(f"Identified {len(deduped)} research gaps")
-    return deduped
+    print(f"Identified {len(unique_gaps)} research gaps")
+    return unique_gaps
 
 
 def format_gaps_as_text(gaps: list[dict], topic: str) -> str:
+    """Generate a plain‑text version of the gaps for download."""
     if not gaps:
         return f"No significant research gaps identified for '{topic}'."
 
     lines = [
         f"RESEARCH GAP SUMMARY FOR: {topic.upper()}",
-        "=" * 60, ""
+        "=" * 60,
+        ""
     ]
 
     for i, gap in enumerate(gaps, 1):
@@ -323,11 +331,12 @@ def format_gaps_as_text(gaps: list[dict], topic: str) -> str:
         lines.append("What you can do:")
         lines.append(gap["what_to_do"])
         lines.append("")
-        
         if gap.get("paper_list"):
-            lines.append("Existing papers in this gap cluster:")
-            for paper in gap["paper_list"][:5]:  # limit to 5 in text report
-                lines.append(f"  {paper}")
+            lines.append("Existing papers in this cluster:")
+            for paper in gap["paper_list"]:
+                # Remove markdown link formatting for plain text
+                clean = re.sub(r"\[Link\]\([^)]*\)", "", paper).strip()
+                lines.append(f"  {clean}")
         lines.append("")
         lines.append("-" * 40)
         lines.append("")
