@@ -1,9 +1,6 @@
 # Research Gap Finder
 
-Automated research gap detection for any academic topic. Given a research 
-question, the system retrieves papers from multiple academic databases, maps 
-the knowledge landscape using NLP, identifies contradictions between papers, 
-and generates a structured research gap report.
+Automated research gap detection for any academic topic. Given a research question, the system retrieves papers from multiple academic databases, maps the knowledge landscape using NLP, identifies contradictions between papers, and generates a structured research gap report.
 
 ## Live Demo
 
@@ -23,9 +20,7 @@ https://research-gap-finder.streamlit.app/
 
 ## Tech Stack
 
-Python, Streamlit, Sentence Transformers, FAISS, Scikit-learn, 
-PubMed API, Semantic Scholar API, OpenAlex API, arXiv API, 
-Plotly, NetworkX, Pandas
+Python, Streamlit, Sentence Transformers, FAISS, Scikit-learn, PubMed API, Semantic Scholar API, OpenAlex API, arXiv API, Plotly, NetworkX, Pandas
 
 ## Setup
 
@@ -65,19 +60,13 @@ Open http://localhost:8501 in your browser.
 ## How It Works
 
 ### Retrieval
-Papers are fetched from four databases simultaneously. The system detects 
-the academic field from the query and weights sources accordingly - medical 
-topics get more PubMed results, CS topics get more arXiv and OpenAlex results.
+Papers are fetched from four databases simultaneously. The system detects the academic field from the query and weights sources accordingly - medical topics get more PubMed results, CS topics get more arXiv and OpenAlex results.
 
 ### Embeddings
-Each paper's title and abstract are combined and encoded into a 384-dimensional 
-vector using the all-MiniLM-L6-v2 Sentence Transformer model. Papers on similar 
-topics receive similar vectors.
+Each paper's title and abstract are combined and encoded into a 384-dimensional vector using the all-MiniLM-L6-v2 Sentence Transformer model. Papers on similar topics receive similar vectors.
 
 ### Clustering
-Embeddings are reduced to 10 dimensions using PCA and clustered using DBSCAN. 
-The algorithm determines the number of clusters automatically. A KMeans fallback 
-handles cases where DBSCAN finds no structure.
+Embeddings are reduced to 10 dimensions using PCA and clustered using DBSCAN. The algorithm determines the number of clusters automatically. A KMeans fallback handles cases where DBSCAN finds no structure.
 
 ### Gap Detection
 Three gap types are identified:
@@ -86,12 +75,10 @@ Three gap types are identified:
 - Temporal gaps: clusters where all papers are more than 5 years old
 
 ### Contradiction Detection
-Pairs of papers with high semantic similarity but opposing conclusion 
-sentiment are flagged as potential contradictions.
+Pairs of papers with high semantic similarity but opposing conclusion sentiment are flagged as potential contradictions.
 
 ### Demographic Analysis
-Abstracts are scanned for mentions of specific population groups across 
-four dimensions: age, gender, geography, and socioeconomic status.
+Abstracts are scanned for mentions of specific population groups across four dimensions: age, gender, geography, and socioeconomic status.
 
 ## Project Structure
 
