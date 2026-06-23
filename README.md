@@ -101,8 +101,6 @@ research-gap-finder/
 │   ├── analysis/
 │   │   ├── gap_detector.py       # Research gap identification
 │   │   └── demographics.py       # Demographic representation analysis
-│   ├── visualisation/
-│   │   └── citation_graph.py     # Citation network visualisation
 │   └── report/
 │       └── generator.py          # Structured report generation
 └── data/
